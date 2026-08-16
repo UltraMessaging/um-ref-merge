@@ -49,50 +49,36 @@ Preconditions:
 - Working directory is a clone of the upstream repo.
 - `~/.claude/skills/um-ref/` does **not** exist. If it does, the user
   is Updating, not Installing.
-- `$REPO_ROOT/um-ref/VERSION` exists (true for all releases 1.0+).
 
 Steps:
 
     mkdir -p ~/.claude/skills
     cp -a "$REPO_ROOT/um-ref" ~/.claude/skills/
 
-Confirm:
-
-    cat ~/.claude/skills/um-ref/VERSION
-
-VERSION is a `git describe --tags --long` string of the form
-`release-<SEMVER>-<N>-g<hash>` (or a bare `<SEMVER>` for the
-`release-1.0` tag itself). Tell the user to keep note of it — they
-will use it to identify which commit to check out before future
-Update or Contribute runs.
+Tell the user to **keep the clone intact** at its current commit.
+That commit is their BASE for any future Update or Contribute — the
+clone itself is the record of where their install came from.
 
 ## User-provided precondition
 
-For **Update** and **Contribute**, the user must have already
-checked out the commit their active skill was installed from
-(BASE) in their repo clone. This skill trusts that state — it
-does not try to identify BASE for the user, and it does not run
-`git checkout`.
+For **Update** and **Contribute**, the user's repo clone must be
+checked out at BASE — the commit their active skill was installed
+from. The expected default is that they never moved off it: install
+copies `um-ref/` out of the clone, and users are told to leave the
+clone alone until they Update or Contribute. If they did move off
+(e.g. to browse upstream), they check out BASE again before invoking
+this skill.
 
-If the user needs help figuring out which commit that is,
-`~/.claude/skills/um-ref/VERSION` names it: a `git describe --tags
---long` string like `release-1.1-3-g<hash>` for post-1.0 installs
-(the `-g<hash>` suffix is the exact commit), or a bare semver for
-installs from the `release-1.0` tag itself. Pre-1.0 installs have
-no VERSION file — the user picks a commit at-or-before their install
-date from `git log --date=short --pretty='%h %ad %s'`.
+This skill trusts that state. It does not try to identify BASE for
+the user, and it does not run `git checkout`.
 
-**Verify BASE after the user checks out.** Before doing anything
-else, overlay the active skill onto the checked-out `um-ref/` and
-sanity-check the drift:
+**Verify BASE.** Before doing anything else, sanity-check that the
+checked-out `um-ref/` matches the active skill closely:
 
-    diff -rq --exclude=VERSION ~/.claude/skills/um-ref/ um-ref/ \
-        2>&1 | head -30
+    diff -rq ~/.claude/skills/um-ref/ um-ref/ 2>&1 | head -30
 
 Expect only files the user has intentionally touched, plus any new
-files they have added. VERSION is excluded because BASE is the
-content commit just before the stamp commit, so VERSION legitimately
-differs.
+files they have added.
 
 If nearly every file differs, or the diff shows content the user
 does not recognize as their own edits, BASE is wrong. **Stop and
@@ -101,24 +87,18 @@ at a different BASE, do not run `git checkout` on their behalf — a
 wrong BASE produces a subtly incorrect merge. Ask the user to
 re-verify their checkout and re-invoke the skill.
 
-If the active skill is itself a git repo, a sharper check is to
-compare blob hashes (still excluding VERSION):
-
-    diff <(cd ~/.claude/skills/um-ref && \
-           git ls-tree HEAD | grep -v ' VERSION$' | \
-           awk '{print $3, $4}' | sort) \
-         <(git ls-tree HEAD:um-ref | grep -v ' VERSION$' | \
-           awk '{print $3, $4}' | sort)
-
-Matching hashes prove those files are unchanged since BASE.
-
 ## Update workflow
 
 ### Step 1 — Backup and set variables
 
-Always back up before overwriting anything in the active skill:
+Always back up before overwriting anything in the active skill. The
+backup lives in `/tmp` (username-scoped) so it doesn't pollute the
+active skill set. If a backup from an earlier run is already there,
+delete it first — the current active skill is what matters, not last
+run's snapshot:
 
-    cp -a ~/.claude/skills/um-ref ~/.claude/skills/um-ref.pre-merge
+    rm -rf "/tmp/${USER}-um-ref.pre-merge"
+    cp -a ~/.claude/skills/um-ref "/tmp/${USER}-um-ref.pre-merge"
 
 Tell the user about the backup and how to restore from it.
 
@@ -165,14 +145,10 @@ markers only where the two sides changed the same lines.
 
 Certain files are **not hand-authored** — they're generated from UM
 source by `build.sh` or bundled from UM's doc-source tree. They must
-always match the upstream release, never a user's version. `VERSION`
-itself is likewise upstream-managed: it is auto-stamped from
-`git describe --tags --long` at release time and after every
-contribution, and must never carry a user's edits.
+always match the upstream release, never a user's version.
 
 | File               | Origin                                       |
 | ------------------ | -------------------------------------------- |
-| `VERSION`          | Stamped from `git describe --tags --long`    |
 | `java_api.md`      | Generated by `gen_java_api.py`               |
 | `dotnet_api.md`    | Generated by `gen_dotnet_api.py`             |
 | `config-data.xml`  | Bundled from UM `doc/Config/reference/`      |
@@ -183,7 +159,7 @@ Take upstream's version of each unconditionally, regardless of merge
 state:
 
     cd um-ref
-    for f in VERSION java_api.md dotnet_api.md config-data.xml \
+    for f in java_api.md dotnet_api.md config-data.xml \
              index-ume.m4 index-dro.m4; do
       if git show origin/main:um-ref/"$f" >/dev/null 2>&1; then
         git show origin/main:um-ref/"$f" > "$f"
@@ -194,8 +170,8 @@ state:
 
 If any of these show up as user-modified in the pre-merge diff, flag
 it — that's almost certainly a mistake (they regenerated locally
-with a different UM source version, hand-edited a bundled artifact,
-or manually touched `VERSION`). Do not silently accept those edits.
+with a different UM source version, or hand-edited a bundled
+artifact). Do not silently accept those edits.
 
 ### Step 7 — Resolve remaining conflicts
 
@@ -251,12 +227,12 @@ customizations there and expect to see the merge as pending changes:
 
 Tell the user:
 - Their active skill is now updated.
-- VERSION is now the value from `origin/main`.
-- The pre-merge backup remains at `~/.claude/skills/um-ref.pre-merge`
-  if they need to roll back.
-- The backup will be detected as a duplicate skill by Claude Code
-  until they remove it. Suggest they delete it once satisfied with
-  the merge.
+- The pre-merge backup remains at `/tmp/${USER}-um-ref.pre-merge`
+  if they need to roll back. It will be overwritten on the next
+  Update or Contribute run and cleared on reboot.
+- Their new BASE for future Update or Contribute runs is the tip of
+  the `um-ref-merge-work` branch. If they want a stable reference,
+  they can tag it or note the SHA.
 
 **For Update, stop here.**
 
@@ -309,27 +285,18 @@ contribution content.
 
 ### Step 10-C — Push to main (only on explicit approval)
 
-Squash the merged branch into `main`, then follow with a stamp
-commit that writes the `git describe --tags --long` output into
-`um-ref/VERSION`. This gives every commit on `main` a
-BASE-identifying VERSION, matching what `RELEASE_UPGRADE.md` does at
-release cuts.
+Squash the merged branch into `main` and push:
 
     git checkout main
     git pull                                     # fast-forward local main to origin/main
     git merge --squash um-ref-merge-work
     git commit -m 'contribute local um-ref improvements'
-    git describe --tags --long > um-ref/VERSION
-    git add um-ref/VERSION
-    git commit -m 'stamp VERSION'
     git push
     git branch -D um-ref-merge-work              # force-delete: squash, not a real merge
 
-After the stamp commit, `um-ref/VERSION` reads like
-`release-1.0-3-g<hash>`, where `<hash>` is the content commit's
-short SHA. A future user reads this to identify BASE — the exact
-commit their install came from — before checking out and re-running
-Update or Contribute.
+The user's clone is now on `main` at the newly pushed commit. That
+commit is their new BASE for any future Update or Contribute — the
+clone continues to serve as the record of where their install is.
 
 If `git pull` reports someone else advanced `main` while you were
 working, re-do the merge in the working branch against the new
@@ -355,17 +322,18 @@ push lands.
 
 ## Guardrails
 
-- **Backup first.** Always
-  `cp -a ~/.claude/skills/um-ref ~/.claude/skills/um-ref.pre-merge`
-  before overwriting the user's active skill.
+- **Backup first.** Before overwriting the user's active skill, run
+  `rm -rf "/tmp/${USER}-um-ref.pre-merge"` and then
+  `cp -a ~/.claude/skills/um-ref "/tmp/${USER}-um-ref.pre-merge"`.
+  The `/tmp` location keeps the backup out of the active skill set.
 - **BASE checkout is the user's responsibility.** Don't guess. If
   they can't identify their install, stop.
 - **Preserve executable bits.** Use `cp -a` (archive mode), never
   `cp -r` — the skill's `.py` and `.sh` files are executable.
 - **Preserve the active skill's `.git` on overlay.** Some users
   track local customizations there.
-- **VERSION and generated files are always upstream's.** Never
-  merge user changes into them.
+- **Generated files are always upstream's.** Never merge user
+  changes into them.
 - **No pushes, force-pushes, or branch deletions** without explicit
   user permission.
 - **No `git clean -fdx` or `git reset --hard` in the upstream repo
@@ -373,27 +341,23 @@ push lands.
 
 ## Worked example
 
-User's active skill is a pre-1.0 install (no `VERSION` file). They
-installed on 2026-07-06. Upstream has released 1.0. The user has
-added a new deep dive `wc_details.md` on wildcard receivers and
-inserted a router-table entry for it in `SKILL.md`. Meanwhile,
-between their install and 1.0, the maintainer added
+User installed from commit `f97258b`. Their clone is still at
+`f97258b` (they were told to keep it intact). Upstream has since
+released 1.0 and added new content. The user has added a new deep
+dive `wc_details.md` on wildcard receivers and inserted a
+router-table entry for it in `SKILL.md`. Meanwhile, between their
+install and 1.0, the maintainer added
 `configuration_best_practices.md` and rewrote §3 of `SKILL.md`.
 
-Setup: ask the user to check out their BASE:
-
-    git log --date=short --pretty='%h %ad %s'
-    # user picks commit f97258b (dated 2026-07-06)
-    git checkout f97258b
-
-Verify:
+Verify BASE:
 
     diff -rq ~/.claude/skills/um-ref/ um-ref/ | head
     # Shows only SKILL.md diff and wc_details.md as new — plausible.
 
 Backup, branch, overlay, commit:
 
-    cp -a ~/.claude/skills/um-ref ~/.claude/skills/um-ref.pre-merge
+    rm -rf "/tmp/${USER}-um-ref.pre-merge"
+    cp -a ~/.claude/skills/um-ref "/tmp/${USER}-um-ref.pre-merge"
     git checkout -b um-ref-merge-work
     find um-ref -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     (cd ~/.claude/skills/um-ref && \
@@ -407,7 +371,6 @@ Merge:
 
 `git status` shows `SKILL.md` in conflict (both sides edited near
 §3). `wc_details.md` and `configuration_best_practices.md` auto-add.
-`VERSION` gets the value from `origin/main` via policy override.
 
 Resolve `SKILL.md` conflict semantically: the user's router-table
 row still applies to the rewritten §3; keep it and adapt the wording
