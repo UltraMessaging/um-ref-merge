@@ -1,6 +1,6 @@
 ---
 name: um-ref-merge
-description: Manage a Claude Code install of the `um-ref` skill against its upstream git repo (https://github.com/UltraMessaging/um-ref) — install a fresh copy, update an existing install while preserving local customizations, or contribute local changes back via a pull request. Triggers on prompts like "install the um-ref skill", "update my um-ref skill", "please update the /um-ref skill from this repo", "merge my um-ref changes back", "contribute my um-ref skill improvements". Requires the user to be running Claude inside a git clone of the upstream `um-ref` repo. For Update and Contribute, the clone must be checked out at the commit corresponding to the user's install (their BASE) — that one-time manual setup replaces all the BASE-guessing machinery earlier versions of this skill needed. Do NOT trigger on unrelated skills or on general git-merge tasks — this skill knows about `um-ref`'s specific file layout and would give wrong answers for other skills.
+description: Manage a Claude Code install of the `um-ref` skill against its upstream git repo (https://github.com/UltraMessaging/um-ref) — install a fresh copy, update an existing install while preserving local customizations, or contribute local changes back by pushing to `main` (the upstream team uses trunk-based development, no PR review). Triggers on prompts like "install the um-ref skill", "update my um-ref skill", "please update the /um-ref skill from this repo", "merge my um-ref changes back", "contribute my um-ref skill improvements". Requires the user to be running Claude inside a git clone of the upstream `um-ref` repo. For Update and Contribute, the clone must be checked out at the commit corresponding to the user's install (their BASE) — that one-time manual setup replaces all the BASE-guessing machinery earlier versions of this skill needed. Do NOT trigger on unrelated skills or on general git-merge tasks — this skill knows about `um-ref`'s specific file layout and would give wrong answers for other skills.
 ---
 
 # um-ref-merge — install, update, and contribute for the `um-ref` skill
@@ -15,8 +15,9 @@ Three workflows against the upstream `um-ref` repo
 - **Update** — pull newer skill content into an existing active
   skill, preserving whatever local edits the user (or Claude on their
   behalf) has made.
-- **Contribute** — same merge as Update, plus produce a branch in the
-  repo clone ready for a pull request.
+- **Contribute** — same merge as Update, plus squash the result onto
+  `main` and push. The upstream team uses trunk-based development;
+  there is no PR review flow.
 
 Update and Contribute both rely on the user's repo clone being
 **already checked out at the commit corresponding to their install**
@@ -32,8 +33,7 @@ the skill, this is the wrong tool — direct them to
 - `~/.claude/skills/um-ref/` **does not exist** → **Install**.
 - `~/.claude/skills/um-ref/` exists, user asks to update / sync / pick
   up the latest → **Update**.
-- User asks to contribute / merge changes back / open a PR →
-  **Contribute**.
+- User asks to contribute / merge changes back → **Contribute**.
 
 If intent is ambiguous, ask.
 
@@ -257,13 +257,21 @@ Tell the user:
 
 ## Contribute workflow
 
+The upstream `um-ref` team uses **trunk-based development**:
+contributions land directly on `main`. There is no PR review flow and
+no `gh` command. Every push is trusted to have been tested locally.
+
+This skill assumes the contributor has write access on the upstream
+repo. Contributors without write access should open a GitHub issue
+describing the change and let a maintainer land it.
+
 Steps 1–7 are identical to Update. The `um-ref-merge-work` branch in
-the repo clone now holds the merged result and is exactly what a PR
-would propose.
+the repo clone now holds the merged result and is exactly what will
+land on `main`.
 
 Do not run Step 8's active-skill overlay yet — apply it only after
 the user has approved the contribution content, so what lands on
-their live skill is the same content they've reviewed for the PR.
+their live skill is the same content they've reviewed for the push.
 
 ### Step 8-C — Filter the contribution and show the user
 
@@ -287,21 +295,31 @@ Then show the user the summary:
     git diff --stat origin/main
 
 **Stop before committing.** The user reviews and either instructs
-you to commit and open a PR, or asks for adjustments.
+you to commit and push, or asks for adjustments.
 
 ### Step 9-C — Apply the merged result to the active skill
 
 Same as Update Step 8. Do this after the user has approved the
 contribution content.
 
-### Step 10-C — Commit and PR (only on explicit approval)
+### Step 10-C — Push to main (only on explicit approval)
 
-If the user approves, commit on the working branch:
+Squash the merged branch into `main` for a single clean commit, then
+push:
 
+    git checkout main
+    git pull                                     # fast-forward local main to origin/main
+    git merge --squash um-ref-merge-work
     git commit -m 'contribute local um-ref improvements'
+    git push
+    git branch -D um-ref-merge-work              # force-delete: squash, not a real merge
 
-Do **not** `git push` without explicit permission — this is a public
-repo. `gh pr create` after push is the user's decision.
+If `git pull` reports someone else advanced `main` while you were
+working, re-do the merge in the working branch against the new
+`origin/main` before the final push, and re-test.
+
+Do **not** `git push` without explicit permission. This is a public
+repo, and the push is where the change becomes visible to others.
 
 ## When the full merge is overkill
 
@@ -315,8 +333,8 @@ overhead when there's nothing to reconcile.
 Conversely, if the user rewrote the skill from scratch or made
 architecturally sweeping changes, a mechanical merge won't capture
 the intent — suggest they open a GitHub issue describing the
-changes first so the maintainer can weigh in on approach before a
-big PR lands.
+changes first so the team can weigh in on approach before a big
+push lands.
 
 ## Guardrails
 
@@ -381,4 +399,4 @@ unclear. Commit.
 
 Contribute path: show the user the diff. They approve. Apply merged
 result to active skill. Commit on the branch. User decides whether
-to `git push` and open a PR.
+to squash onto `main` and `git push`.

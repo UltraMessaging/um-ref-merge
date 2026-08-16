@@ -7,8 +7,9 @@ against its upstream git repo. It handles three workflows:
 - **Install** a fresh copy of `um-ref` into `~/.claude/skills/um-ref/`.
 - **Update** an existing install with newer upstream content while preserving
   local customizations, via a 3-way merge anchored at the installed VERSION.
-- **Contribute** local `um-ref` improvements back upstream by staging the same
-  merged result on a branch in the repo clone, ready for a pull request.
+- **Contribute** local `um-ref` improvements back upstream by squashing the
+  merged result onto `main` and pushing. The upstream team uses trunk-based
+  development; there is no PR review flow.
 
 All three assume the user is running Claude inside a git clone of the
 upstream `um-ref` repo.
@@ -31,8 +32,8 @@ It stages BASE/OURS/THEIRS in a scratch git repo, runs `git merge`, applies
 policy overrides for auto-generated files (`VERSION`, `java_api.md`,
 `dotnet_api.md`, `config-data.xml`, `index-ume.m4`, `index-dro.m4`), guides
 conflict resolution, and lands the merged result in the user's active
-skill. For Contribute, it also stages the merged content on a branch in
-the upstream clone ready for a PR.
+skill. For Contribute, it also squashes the merged content onto `main`
+in the upstream clone, ready to push.
 
 ## Prerequisites
 
@@ -77,8 +78,8 @@ skill's description should appear in the available-skills list.
      the repo clone).
    - Active skill exists, you asked to update → **Update** (3-way merge,
      write result back to the active skill).
-   - You asked to contribute / open a PR → **Contribute** (same merge,
-     plus stage on a branch in the repo clone).
+   - You asked to contribute / merge back → **Contribute** (same merge,
+     plus squash onto `main` in the repo clone, ready to push).
 
 5. For Update / Contribute, Claude will:
    - Back up your active skill to `~/.claude/skills/um-ref.pre-merge/`.
@@ -89,9 +90,15 @@ skill's description should appear in the available-skills list.
    - Overlay the merged tree onto `~/.claude/skills/um-ref/`.
 
 6. For Contribute, Claude will additionally stage the merged content on
-   a branch in the upstream clone and show you `git diff --stat` before
-   committing. Review the diff — if you're happy, tell Claude to commit,
-   then run `git push` and `gh pr create` yourself when ready.
+   a working branch in the upstream clone and show you `git diff --stat`
+   before committing. Review the diff — if you're happy, tell Claude to
+   commit. Claude then squashes the working branch onto `main` for one
+   clean commit and runs `git push`. `git push` only happens on your
+   explicit go-ahead.
+
+   The upstream team uses trunk-based development; contributors without
+   write access on the upstream repo should open a GitHub issue
+   describing the change instead.
 
 ## When *not* to use this
 
@@ -105,7 +112,10 @@ skill's description should appear in the available-skills list.
 
 ## Contributing
 
-Improvements to this skill are welcome via PR against
-<https://github.com/UltraMessaging/um-ref-merge>. Note that changes to
-`um-ref-merge/SKILL.md` are what actually affect behavior — the README is
-just install/usage documentation for humans.
+This repo uses trunk-based development — the team pushes improvements
+directly to `main` on <https://github.com/UltraMessaging/um-ref-merge>.
+There is no PR review flow. Contributors without write access should
+open a GitHub issue describing the change instead.
+
+Note that changes to `um-ref-merge/SKILL.md` are what actually affect
+behavior — the README is just install/usage documentation for humans.
