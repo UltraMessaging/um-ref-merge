@@ -48,7 +48,6 @@ in the upstream clone, ready to push.
 Clone this repo somewhere convenient:
 
     git clone https://github.com/UltraMessaging/um-ref-merge.git
-    mkdir -p ~/.claude/skills
 
 Then, in that directory, launch Claude Code and ask:
 
@@ -56,16 +55,10 @@ Then, in that directory, launch Claude Code and ask:
 Please install the skill in this repo.
 ```
 
-To pick up updates later, `git pull` in the clone and re-copy:
-
-    cd um-ref-merge
-    git pull
-    cp -a um-ref-merge/. ~/.claude/skills/um-ref-merge/
-
-Or you can just start Claude in the directory and say:
+To pick up updates later, launch Claude Code in the clone and ask:
 
 ```
-Please pull the skill in this repo and install it.
+Please update um-ref-merge from this repo.
 ```
 
 ## Use

@@ -28,6 +28,11 @@ If the user is the **um-ref maintainer** doing a UM version upgrade of
 the skill, this is the wrong tool — direct them to
 `um-ref/RELEASE_UPGRADE.md`.
 
+**Applicability.** If the current working directory is not a clone of
+the upstream `um-ref` repo, treat the user's prompt as if this skill
+does not exist — defer to any `CLAUDE.md` in the current repo or to
+other matching skills.
+
 ## Choosing the workflow
 
 - `~/.claude/skills/um-ref/` **does not exist** → **Install**.
