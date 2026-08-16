@@ -1,46 +1,51 @@
 # um-ref-merge
 
-A [Claude Code](https://claude.com/claude-code) skill that helps a contributor
-merge their locally-improved `um-ref` skill back into the upstream
-[UltraMessaging/um-ref](https://github.com/UltraMessaging/um-ref) repo via a
-proper 3-way merge.
+A [Claude Code](https://claude.com/claude-code) skill that manages a local
+install of the [`um-ref`](https://github.com/UltraMessaging/um-ref) skill
+against its upstream git repo. It handles three workflows:
 
-The companion skill it operates on is `um-ref`, which lives at
-<https://github.com/UltraMessaging/um-ref> and — once installed — at
-`~/.claude/skills/um-ref/`.
+- **Install** a fresh copy of `um-ref` into `~/.claude/skills/um-ref/`.
+- **Update** an existing install with newer upstream content while preserving
+  local customizations, via a 3-way merge anchored at the installed VERSION.
+- **Contribute** local `um-ref` improvements back upstream by staging the same
+  merged result on a branch in the repo clone, ready for a pull request.
+
+All three assume the user is running Claude inside a git clone of the
+upstream `um-ref` repo.
 
 ## What it does
 
-Between a contributor's install and current upstream HEAD, both the maintainer
-and the contributor have been editing the skill in parallel with no shared git
-history. `um-ref-merge` walks Claude through a proper 3-way merge:
+`um-ref` is a knowledge-heavy skill that users are encouraged to extend —
+adding domain knowledge as they work with Claude. Between an install and
+current upstream HEAD, both the maintainer and the user may have been
+editing the skill in parallel with no shared git history. For Update and
+Contribute, `um-ref-merge` walks Claude through a proper 3-way merge:
 
-- **BASE** — the release the contributor originally installed from (identified
-  from the local git clone's HEAD, reflog, or `um-ref.tgz` history).
-- **OURS** — current upstream HEAD.
-- **THEIRS** — the contributor's improved `~/.claude/skills/um-ref/`.
+- **BASE** — the release the user originally installed, identified from the
+  `VERSION` file in the active skill and looked up as a `release-<VERSION>`
+  tag in the upstream repo. (A pre-1.0 fallback uses `um-ref.tgz` history.)
+- **OURS** — current upstream `um-ref/` (from `origin/main`).
+- **THEIRS** — the user's active `~/.claude/skills/um-ref/`.
 
 It stages BASE/OURS/THEIRS in a scratch git repo, runs `git merge`, applies
-policy overrides for auto-generated files (`java_api.md`, `dotnet_api.md`,
-`config-data.xml`, `index-ume.m4`, `index-dro.m4`), guides conflict resolution,
-and lands the merged result both in the contributor's active skill and on a
-branch in the upstream clone ready for a PR.
+policy overrides for auto-generated files (`VERSION`, `java_api.md`,
+`dotnet_api.md`, `config-data.xml`, `index-ume.m4`, `index-dro.m4`), guides
+conflict resolution, and lands the merged result in the user's active
+skill. For Contribute, it also stages the merged content on a branch in
+the upstream clone ready for a PR.
 
 ## Prerequisites
 
 - Claude Code installed and working.
-- The `um-ref` skill installed at `~/.claude/skills/um-ref/` with your local
-  improvements.
-- A clean git clone of <https://github.com/UltraMessaging/um-ref> that you run
-  Claude Code in when invoking this skill. `git status` should be clean; do
-  **not** `git pull` immediately before invoking the skill — the current
-  HEAD vs. `origin/main` gap is used as the primary signal for identifying
-  BASE.
+- A git clone of <https://github.com/UltraMessaging/um-ref> that you run
+  Claude Code in when invoking this skill, with a clean `git status`.
+- For Update / Contribute: the `um-ref` skill installed at
+  `~/.claude/skills/um-ref/` with your local improvements.
 
-## Install
+## Install this skill
 
-Skills are loaded from `~/.claude/skills/<skill-name>/`. Install this one by
-copying the `um-ref-merge/` directory from this repo into that location:
+Skills are loaded from `~/.claude/skills/<skill-name>/`. Install this one
+by copying the `um-ref-merge/` directory from this repo into that location:
 
     git clone https://github.com/UltraMessaging/um-ref-merge.git
     mkdir -p ~/.claude/skills
@@ -52,52 +57,51 @@ To pick up updates later, `git pull` in the clone and re-copy:
     git pull
     cp -a um-ref-merge/. ~/.claude/skills/um-ref-merge/
 
-If you'd rather not clone the repo, you can fetch `SKILL.md` directly. This
-works today because the skill is a single file; if it later grows helper
-files, this shortcut will silently miss them.
-
-    mkdir -p ~/.claude/skills/um-ref-merge
-    cd ~/.claude/skills/um-ref-merge
-    wget https://github.com/UltraMessaging/um-ref-merge/raw/main/um-ref-merge/SKILL.md
-
-(Use `curl -O <url>` if `wget` isn't installed.)
-
-Verify the install by starting Claude Code and running `/help` — the skill's
-description should appear in the available-skills list.
+Verify the install by starting Claude Code and running `/help` — the
+skill's description should appear in the available-skills list.
 
 ## Use
 
 1. `cd` into your git clone of the upstream `um-ref` repo.
-2. Confirm `git status` is clean and you haven't just `git pull`ed.
+2. Confirm `git status` is clean.
 3. Start Claude Code and invoke the skill by name:
 
         /um-ref-merge
 
    Or ask in natural language — the description triggers on prompts like
-   "merge my um-ref skill changes into this repo" or "contribute my um-ref
-   skill improvements back."
+   "install the um-ref skill", "update my um-ref skill", or "contribute
+   my um-ref skill improvements back."
 
-4. Claude will:
+4. Claude will pick the workflow based on state and intent:
+   - No `~/.claude/skills/um-ref/` yet → **Install** (a straight copy from
+     the repo clone).
+   - Active skill exists, you asked to update → **Update** (3-way merge,
+     write result back to the active skill).
+   - You asked to contribute / open a PR → **Contribute** (same merge,
+     plus stage on a branch in the repo clone).
+
+5. For Update / Contribute, Claude will:
    - Back up your active skill to `~/.claude/skills/um-ref.pre-merge/`.
-   - Identify BASE, set up the 3-way merge, and apply policy overrides.
+   - Read `VERSION` from the active skill, resolve `release-<VERSION>` in
+     the repo, and extract BASE.
+   - Run the 3-way merge and apply policy overrides.
    - Ask you about any conflicts that need judgement.
-   - Update `~/.claude/skills/um-ref/` in place.
-   - Stage the merged content on a branch in the upstream clone and show
-     you `git diff --stat` before committing.
-5. Review the diff. If you're happy, tell Claude to commit; then run
-   `git push` and `gh pr create` yourself when ready.
+   - Overlay the merged tree onto `~/.claude/skills/um-ref/`.
+
+6. For Contribute, Claude will additionally stage the merged content on
+   a branch in the upstream clone and show you `git diff --stat` before
+   committing. Review the diff — if you're happy, tell Claude to commit,
+   then run `git push` and `gh pr create` yourself when ready.
 
 ## When *not* to use this
 
-- **Maintainer release upgrades.** If you're the `um-ref` maintainer cutting a
-  new release from an updated UM source tree, follow `um-ref/RELEASE_UPGRADE.md`
-  in the upstream repo instead — this skill is for contributor merges.
-- **Trivial contributions.** If you only added a single new deep-dive file
-  and made no `SKILL.md` edits, you don't need 3-way merge machinery — just
-  copy the file into `um-ref/` on a branch and open a PR.
-- **Architectural rewrites.** If you rewrote the skill from scratch, open a
-  GitHub issue describing the intent first so the maintainer can weigh in
-  before you invest in a mechanical merge.
+- **Maintainer UM release upgrades.** If you're the `um-ref` maintainer
+  cutting a new release from an updated UM source tree, follow
+  `um-ref/RELEASE_UPGRADE.md` in the upstream repo instead — this skill
+  is for user-facing flows.
+- **Architectural rewrites.** If you rewrote the skill from scratch,
+  open a GitHub issue describing the intent first so the maintainer can
+  weigh in before you invest in a mechanical merge.
 
 ## Contributing
 
