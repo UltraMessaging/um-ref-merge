@@ -45,12 +45,16 @@ in the upstream clone, ready to push.
 
 ## Install this skill
 
-Skills are loaded from `~/.claude/skills/<skill-name>/`. Install this one
-by copying the `um-ref-merge/` directory from this repo into that location:
+Clone this repo somewhere convenient:
 
     git clone https://github.com/UltraMessaging/um-ref-merge.git
     mkdir -p ~/.claude/skills
-    cp -a um-ref-merge/um-ref-merge ~/.claude/skills/
+
+Then, in that directory, launch Claude Code and ask:
+
+```
+Please install the skill in this repo.
+```
 
 To pick up updates later, `git pull` in the clone and re-copy:
 
@@ -58,8 +62,11 @@ To pick up updates later, `git pull` in the clone and re-copy:
     git pull
     cp -a um-ref-merge/. ~/.claude/skills/um-ref-merge/
 
-Verify the install by starting Claude Code and running `/help` — the
-skill's description should appear in the available-skills list.
+Or you can just start Claude in the directory and say:
+
+```
+Please pull the skill in this repo and install it.
+```
 
 ## Use
 
