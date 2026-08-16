@@ -55,59 +55,57 @@ Confirm:
 
     cat ~/.claude/skills/um-ref/VERSION
 
-Tell the user which VERSION they installed. Future updates will need
-the repo clone checked out at the matching `release-<VERSION>` tag.
+VERSION is a `git describe --tags --long` string of the form
+`release-<SEMVER>-<N>-g<hash>` (or a bare `<SEMVER>` for the
+`release-1.0` tag itself). Tell the user to keep note of it — they
+will use it to identify which commit to check out before future
+Update or Contribute runs.
 
 ## User-provided precondition
 
-For **Update** and **Contribute**, the repo clone must be checked out
-at the commit representing the user's install (BASE). This lets git's
-own merge machinery do the 3-way merge without any synthetic-repo
-scaffolding.
+For **Update** and **Contribute**, the user must have already
+checked out the commit their active skill was installed from
+(BASE) in their repo clone. This skill trusts that state — it
+does not try to identify BASE for the user, and it does not run
+`git checkout`.
 
-Ask the user to check out BASE before starting:
+If the user needs help figuring out which commit that is,
+`~/.claude/skills/um-ref/VERSION` names it: a `git describe --tags
+--long` string like `release-1.1-3-g<hash>` for post-1.0 installs
+(the `-g<hash>` suffix is the exact commit), or a bare semver for
+installs from the `release-1.0` tag itself. Pre-1.0 installs have
+no VERSION file — the user picks a commit at-or-before their install
+date from `git log --date=short --pretty='%h %ad %s'`.
 
-- **Install has a `VERSION` file** (release 1.0 or later): check out
-  the matching tag.
+**Verify BASE after the user checks out.** Before doing anything
+else, overlay the active skill onto the checked-out `um-ref/` and
+sanity-check the drift:
 
-        git checkout release-<VERSION>
+    diff -rq --exclude=VERSION ~/.claude/skills/um-ref/ um-ref/ \
+        2>&1 | head -30
 
-- **Pre-1.0 install** (wget-tarball scheme, no `VERSION` file): the
-  user picks the most recent commit at-or-before their install date.
-  Show them:
+Expect only files the user has intentionally touched, plus any new
+files they have added. VERSION is excluded because BASE is the
+content commit just before the stamp commit, so VERSION legitimately
+differs.
 
-        git log --date=short --pretty='%h %ad %s'
+If nearly every file differs, or the diff shows content the user
+does not recognize as their own edits, BASE is wrong. **Stop and
+report the diff to the user.** Do not try to recover, do not guess
+at a different BASE, do not run `git checkout` on their behalf — a
+wrong BASE produces a subtly incorrect merge. Ask the user to
+re-verify their checkout and re-invoke the skill.
 
-  and ask which one matches. Then:
+If the active skill is itself a git repo, a sharper check is to
+compare blob hashes (still excluding VERSION):
 
-        git checkout <commit-hash>
+    diff <(cd ~/.claude/skills/um-ref && \
+           git ls-tree HEAD | grep -v ' VERSION$' | \
+           awk '{print $3, $4}' | sort) \
+         <(git ls-tree HEAD:um-ref | grep -v ' VERSION$' | \
+           awk '{print $3, $4}' | sort)
 
-- **User isn't sure**: stop. Don't guess. Ask when they installed,
-  what UM version they remember, or offer to inspect their active
-  skill for identifying content. A wrong BASE produces a subtly
-  incorrect merge.
-
-**Verify BASE after the user checks out.** After they say they're
-on BASE, do a quick sanity check before starting the merge: overlay
-their active skill onto the checked-out `um-ref/` (in a scratch
-diff, don't touch the working tree yet):
-
-    diff -rq ~/.claude/skills/um-ref/ um-ref/ 2>&1 | head -30
-
-If differences span nearly every file with implausible line counts,
-BASE is wrong — bail and re-ask. A correct BASE shows differences
-only on files the user has intentionally touched, plus any new files
-they've added.
-
-If the user's active skill is itself a git repo (some users track
-their local customizations), an even sharper check is to compare
-tree hashes:
-
-    diff <(cd ~/.claude/skills/um-ref && git ls-tree HEAD | awk '{print $3, $4}' | sort) \
-         <(git ls-tree HEAD:um-ref | awk '{print $3, $4}' | sort)
-
-Files with identical blob hashes on both sides are unchanged since
-BASE — that's the exact signal you want.
+Matching hashes prove those files are unchanged since BASE.
 
 ## Update workflow
 
@@ -163,11 +161,13 @@ markers only where the two sides changed the same lines.
 Certain files are **not hand-authored** — they're generated from UM
 source by `build.sh` or bundled from UM's doc-source tree. They must
 always match the upstream release, never a user's version. `VERSION`
-itself is likewise set by the maintainer at release time.
+itself is likewise upstream-managed: it is auto-stamped from
+`git describe --tags --long` at release time and after every
+contribution, and must never carry a user's edits.
 
 | File               | Origin                                       |
 | ------------------ | -------------------------------------------- |
-| `VERSION`          | Set by maintainer at release                 |
+| `VERSION`          | Stamped from `git describe --tags --long`    |
 | `java_api.md`      | Generated by `gen_java_api.py`               |
 | `dotnet_api.md`    | Generated by `gen_dotnet_api.py`             |
 | `config-data.xml`  | Bundled from UM `doc/Config/reference/`      |
@@ -304,15 +304,27 @@ contribution content.
 
 ### Step 10-C — Push to main (only on explicit approval)
 
-Squash the merged branch into `main` for a single clean commit, then
-push:
+Squash the merged branch into `main`, then follow with a stamp
+commit that writes the `git describe --tags --long` output into
+`um-ref/VERSION`. This gives every commit on `main` a
+BASE-identifying VERSION, matching what `RELEASE_UPGRADE.md` does at
+release cuts.
 
     git checkout main
     git pull                                     # fast-forward local main to origin/main
     git merge --squash um-ref-merge-work
     git commit -m 'contribute local um-ref improvements'
+    git describe --tags --long > um-ref/VERSION
+    git add um-ref/VERSION
+    git commit -m 'stamp VERSION'
     git push
     git branch -D um-ref-merge-work              # force-delete: squash, not a real merge
+
+After the stamp commit, `um-ref/VERSION` reads like
+`release-1.0-3-g<hash>`, where `<hash>` is the content commit's
+short SHA. A future user reads this to identify BASE — the exact
+commit their install came from — before checking out and re-running
+Update or Contribute.
 
 If `git pull` reports someone else advanced `main` while you were
 working, re-do the merge in the working branch against the new
